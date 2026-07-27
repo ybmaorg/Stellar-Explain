@@ -11,9 +11,10 @@ mod state;
 
 use axum::{
     Router,
+    extract::Extension,
     http::{HeaderValue, Method, header},
     middleware as axum_middleware,
-    routing::get,
+    routing::{get, post},
 };
 use std::{env, sync::Arc};
 use tokio::net::TcpListener;
@@ -77,6 +78,10 @@ async fn main() {
 
     let openapi = ApiDoc::openapi();
 
+    let analytics_state = Arc::new(
+        crate::routes::analytics::AnalyticsState::new(10000, 500, 1),
+    );
+
     let app = Router::new()
         .route("/health", get(health))
         .route("/tx/:hash", get(routes::tx::get_tx_explanation))
@@ -84,8 +89,17 @@ async fn main() {
             "/account/:address",
             get(routes::account::get_account_explanation),
         )
+        .route(
+            "/analytics/summary",
+            get(routes::analytics::get_analytics_summary),
+        )
+        .route(
+            "/analytics/ingest",
+            post(routes::analytics::ingest),
+        )
         .merge(SwaggerUi::new("/docs").url("/openapi.json", openapi))
         .with_state(horizon_client)
+        .layer(Extension(analytics_state))
         .layer(cors)
         .layer(ServiceBuilder::new().layer(axum_middleware::from_fn(request_id_middleware)));
 
